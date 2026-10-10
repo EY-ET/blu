@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import NavBar from './NavBar';
 import MenuItem from './MenuItem';
 import { MENU_ITEMS, MENU_CATEGORIES } from '../data/menu';
+import { MenuItemType } from '../data/types';
 
 interface MenuPageProps {
   setPage: (page: string) => void;
@@ -9,13 +10,34 @@ interface MenuPageProps {
 
 export default function MenuPage({ setPage }: MenuPageProps) {
   const [activeFilter, setActiveFilter] = useState('ALL');
+  const [menuItems, setMenuItems] = useState<MenuItemType[]>(MENU_ITEMS);
 
-  const filteredItems = MENU_ITEMS.filter(item => 
-    activeFilter === 'ALL' ? true : item.category === activeFilter
+  useEffect(() => {
+    let active = true;
+    fetch('/api/menu')
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Menu could not be loaded.');
+        return response.json();
+      })
+      .then((data) => {
+        if (active && Array.isArray(data.items) && data.items.length) {
+          setMenuItems(data.items as MenuItemType[]);
+        }
+      })
+      .catch(() => {
+        // The menu bundled at build time is the fallback if the API is unreachable.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const filteredItems = menuItems.filter(
+    (item) => (item.isAvailable === undefined ? true : item.isAvailable) && (activeFilter === 'ALL' ? true : item.category === activeFilter),
   );
 
-  const displayCategories = activeFilter === 'ALL' 
-    ? MENU_CATEGORIES.filter(c => c !== 'ALL')
+  const displayCategories = activeFilter === 'ALL'
+    ? MENU_CATEGORIES.filter((c) => c !== 'ALL')
     : [activeFilter];
 
   return (
