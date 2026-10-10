@@ -3,9 +3,10 @@ import { Loader2, Plus, X } from 'lucide-react';
 import { MENU_CATEGORIES } from '../data/menu';
 import { AdminMenuItemType } from '../data/types';
 import { uploadMenuImage } from '../lib/menuImage';
+import { SessionExpiredError, authedFetch } from '../lib/adminAuth';
 
 interface MenuAdminViewProps {
-  staffToken: string;
+  onSessionExpired: () => void;
 }
 
 type ItemDraft = {
@@ -31,7 +32,7 @@ const EMPTY_DRAFT: ItemDraft = {
   isAvailable: true,
 };
 
-export default function MenuAdminView({ staffToken }: MenuAdminViewProps) {
+export default function MenuAdminView({ onSessionExpired }: MenuAdminViewProps) {
   const [items, setItems] = useState<AdminMenuItemType[]>([]);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -41,24 +42,27 @@ export default function MenuAdminView({ staffToken }: MenuAdminViewProps) {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const authHeaders = { Authorization: `Bearer ${staffToken}` };
+  const handleError = (actionError: unknown) => {
+    if (actionError instanceof SessionExpiredError) onSessionExpired();
+    else setError(actionError instanceof Error ? actionError.message : 'Something went wrong.');
+  };
 
   const loadItems = () => {
     setLoading(true);
-    fetch('/api/menu?all=1', { headers: authHeaders })
+    authedFetch('/api/menu?all=1')
       .then(async (response) => {
         if (!response.ok) throw new Error('Menu could not be loaded.');
         return response.json();
       })
       .then((data) => setItems(data.items))
-      .catch((loadError: Error) => setError(loadError.message))
+      .catch(handleError)
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
-    if (staffToken) loadItems();
+    loadItems();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [staffToken]);
+  }, []);
 
   const categoryOrder = MENU_CATEGORIES.filter((category) => category !== 'ALL');
   const grouped = categoryOrder.map((category) => ({
@@ -85,9 +89,9 @@ export default function MenuAdminView({ staffToken }: MenuAdminViewProps) {
         isAvailable: draft.isAvailable,
       };
       const isEdit = Boolean(draft.id);
-      const response = await fetch('/api/menu', {
+      const response = await authedFetch('/api/menu', {
         method: isEdit ? 'PATCH' : 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(isEdit ? { id: draft.id, ...payload } : payload),
       });
       const result = await response.json();
@@ -96,7 +100,7 @@ export default function MenuAdminView({ staffToken }: MenuAdminViewProps) {
       setDraft(null);
       loadItems();
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'The item could not be saved.');
+      handleError(saveError);
     } finally {
       setSaving(false);
     }
@@ -106,9 +110,9 @@ export default function MenuAdminView({ staffToken }: MenuAdminViewProps) {
     setError('');
     setNotice('');
     try {
-      const response = await fetch('/api/menu', {
+      const response = await authedFetch('/api/menu', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: item.id, isAvailable: !item.isAvailable }),
       });
       const result = await response.json();
@@ -116,7 +120,7 @@ export default function MenuAdminView({ staffToken }: MenuAdminViewProps) {
       setItems((previous) => previous.map((existing) => (existing.id === item.id ? { ...existing, isAvailable: !item.isAvailable } : existing)));
       setNotice(result.item.isAvailable ? `"${item.title}" is back on the menu.` : `"${item.title}" is hidden from guests.`);
     } catch (toggleError) {
-      setError(toggleError instanceof Error ? toggleError.message : 'The item could not be updated.');
+      handleError(toggleError);
     }
   };
 
@@ -125,13 +129,13 @@ export default function MenuAdminView({ staffToken }: MenuAdminViewProps) {
     setError('');
     setNotice('');
     try {
-      const response = await fetch(`/api/menu?id=${encodeURIComponent(item.id)}`, { method: 'DELETE', headers: authHeaders });
+      const response = await authedFetch(`/api/menu?id=${encodeURIComponent(item.id)}`, { method: 'DELETE' });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'The item could not be deleted.');
       setItems((previous) => previous.filter((existing) => existing.id !== item.id));
       setNotice(`Deleted "${item.title}".`);
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : 'The item could not be deleted.');
+      handleError(deleteError);
     }
   };
 
@@ -141,10 +145,10 @@ export default function MenuAdminView({ staffToken }: MenuAdminViewProps) {
     setUploading(true);
     setError('');
     try {
-      const url = await uploadMenuImage(file, staffToken);
+      const url = await uploadMenuImage(file);
       setDraft((current) => (current ? { ...current, image: url } : current));
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : 'Image upload failed.');
+      handleError(uploadError);
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';

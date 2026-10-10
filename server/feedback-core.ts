@@ -50,14 +50,6 @@ export function validateFeedbackSubmission(body: unknown): ValidFeedbackSubmissi
   return { name, email: email || null, rating, message };
 }
 
-export function staffTokenError(authorization: string | undefined | null): string | null {
-  const expectedToken = process.env.FEEDBACK_ADMIN_TOKEN;
-  const suppliedToken = authorization?.replace(/^Bearer\s+/i, '');
-  if (!expectedToken) return 'Feedback staff access is not configured.';
-  if (suppliedToken !== expectedToken) return 'Enter a valid staff access token.';
-  return null;
-}
-
 export function parseFeedbackLimit(rawLimit: unknown): number {
   const parsedLimit = Number(rawLimit || 100);
   if (!Number.isFinite(parsedLimit)) return 100;

@@ -13,11 +13,13 @@ export default async function handler(request: VercelRequest, response: VercelRe
   try {
     if (request.method !== 'POST') return response.status(405).json({ error: 'Method not allowed.' });
 
-    const expectedToken = process.env.FEEDBACK_ADMIN_TOKEN;
-    if (!expectedToken) return response.status(503).json({ error: 'Staff access is not configured.' });
-    const suppliedToken = request.headers.authorization?.replace(/^Bearer\s+/i, '');
-    if (suppliedToken !== expectedToken) return response.status(401).json({ error: 'Enter a valid staff access token.' });
     if (!SUPABASE_URL || !SERVICE_KEY) return response.status(500).json({ error: 'Menu service is not configured.' });
+
+    const token = request.headers.authorization?.replace(/^Bearer\s+/i, '') || '';
+    const userRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${token}` },
+    });
+    if (!userRes.ok) return response.status(401).json({ error: 'Sign in with a valid admin account.' });
 
     const body = (request.body ?? {}) as { dataUrl?: unknown; filename?: unknown };
     const dataUrl = typeof body.dataUrl === 'string' ? body.dataUrl : '';
