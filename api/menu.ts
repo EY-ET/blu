@@ -119,6 +119,11 @@ export default async function handler(request: VercelRequest, response: VercelRe
   try {
     if (request.method === 'GET') {
       const wantsAll = url.searchParams.get('all') === '1';
+      if (wantsAll) {
+        const tokenError = staffTokenError(request.headers.authorization);
+        if (tokenError === 'Staff access is not configured.') return response.status(503).json({ error: tokenError });
+        if (tokenError) return response.status(401).json({ error: tokenError });
+      }
       const rows = await listMenuRows(wantsAll);
       if (!wantsAll) {
         response.setHeader('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=86400');
