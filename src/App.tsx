@@ -4,6 +4,7 @@ import MenuPage from './components/MenuPage';
 import AboutPage from './components/AboutPage';
 import FeedbackPage from './components/FeedbackPage';
 import TableQrPage from './components/TableQrPage';
+import AdminPage from './components/AdminPage';
 
 export default function App() {
   const pageFromLocation = () => {
@@ -38,7 +39,7 @@ export default function App() {
       case 'menu': return <MenuPage setPage={setPage} />;
       case 'about': return <AboutPage setPage={setPage} />;
       case 'feedback': return <FeedbackPage setPage={setPage} />;
-      case 'feedback-admin': return <FeedbackPage setPage={setPage} adminView />;
+      case 'feedback-admin': return <AdminPage setPage={setPage} />;
       case 'table-qr': return <TableQrPage setPage={setPage} />;
       default: return <HomePage setPage={setPage} />;
     }
