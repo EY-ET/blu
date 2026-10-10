@@ -38,7 +38,7 @@ export async function resizeImageFile(file: File): Promise<string> {
 
 export async function uploadMenuImage(file: File, staffToken: string): Promise<string> {
   const dataUrl = await resizeImageFile(file);
-  const response = await fetch('/api/menu/upload', {
+  const response = await fetch('/api/menu-upload', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${staffToken}` },
     body: JSON.stringify({ filename: file.name, dataUrl }),
