@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { SessionExpiredError, authedFetch } from '../lib/adminAuth';
 
 interface FeedbackEntry {
   id: string;
@@ -11,30 +12,40 @@ interface FeedbackEntry {
 
 interface FeedbackAdminViewProps {
   setPage: (page: string) => void;
-  staffToken: string;
+  onSessionExpired: () => void;
 }
 
-export default function FeedbackAdminView({ setPage, staffToken }: FeedbackAdminViewProps) {
+export default function FeedbackAdminView({ setPage, onSessionExpired }: FeedbackAdminViewProps) {
   const [entries, setEntries] = useState<FeedbackEntry[]>([]);
   const [summary, setSummary] = useState<{ total: number; averageRating: number | null } | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!staffToken) return;
+    let active = true;
     setLoading(true);
-    fetch('/api/feedback?limit=100', { headers: { Authorization: `Bearer ${staffToken}` } })
+    authedFetch('/api/feedback?limit=100')
       .then(async (response) => {
         if (!response.ok) throw new Error('Feedback could not be loaded.');
         return response.json();
       })
       .then((data) => {
+        if (!active) return;
         setEntries(data.entries);
         setSummary(data.summary);
       })
-      .catch((loadError: Error) => setError(loadError.message))
-      .finally(() => setLoading(false));
-  }, [staffToken]);
+      .catch((loadError: Error) => {
+        if (!active) return;
+        if (loadError instanceof SessionExpiredError) onSessionExpired();
+        else setError(loadError.message);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [onSessionExpired]);
 
   return (
     <div>
@@ -43,7 +54,7 @@ export default function FeedbackAdminView({ setPage, staffToken }: FeedbackAdmin
         {summary && <p className="text-stone-600">{summary.total} submissions · Average rating: {summary.averageRating ?? 'N/A'} / 5</p>}
         <a href="/api/feedback/export.csv" onClick={(event) => {
           event.preventDefault();
-          fetch('/api/feedback/export.csv', { headers: { Authorization: `Bearer ${staffToken}` } })
+          authedFetch('/api/feedback/export.csv')
             .then(async (response) => {
               if (!response.ok) throw new Error('CSV export failed.');
               const blob = await response.blob();
@@ -54,7 +65,10 @@ export default function FeedbackAdminView({ setPage, staffToken }: FeedbackAdmin
               link.click();
               window.setTimeout(() => URL.revokeObjectURL(url), 1000);
             })
-            .catch((downloadError: Error) => setError(downloadError.message));
+            .catch((downloadError: Error) => {
+              if (downloadError instanceof SessionExpiredError) onSessionExpired();
+              else setError(downloadError.message);
+            });
         }} className="inline-block mt-4 underline">Download CSV</a>
         <button type="button" onClick={() => setPage('table-qr')} className="block mx-auto mt-3 underline">Create table menu QR</button>
       </div>

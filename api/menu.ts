@@ -34,12 +34,22 @@ function supabaseHeaders(): Record<string, string> {
   return { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` };
 }
 
-function staffTokenError(authorization: string | undefined | null): string | null {
-  const expectedToken = process.env.FEEDBACK_ADMIN_TOKEN;
-  const suppliedToken = authorization?.replace(/^Bearer\s+/i, '');
-  if (!expectedToken) return 'Staff access is not configured.';
-  if (suppliedToken !== expectedToken) return 'Enter a valid staff access token.';
-  return null;
+type AdminCheck = { user: { id: string; email: string } } | { failure: number };
+
+async function checkAdmin(request: VercelRequest): Promise<AdminCheck> {
+  if (!SUPABASE_URL || !SERVICE_KEY) return { failure: 503 };
+  const token = request.headers.authorization?.replace(/^Bearer\s+/i, '') || '';
+  if (!token) return { failure: 401 };
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return { failure: 401 };
+  return { user: (await res.json()) as { id: string; email: string } };
+}
+
+function adminErrorResponse(response: VercelResponse, failure: number) {
+  if (failure === 503) return response.status(503).json({ error: 'Admin access is not configured.' });
+  return response.status(401).json({ error: 'Sign in with a valid admin account.' });
 }
 
 function toMenuItem(row: MenuRow): AdminMenuItem {
@@ -120,9 +130,8 @@ export default async function handler(request: VercelRequest, response: VercelRe
     if (request.method === 'GET') {
       const wantsAll = url.searchParams.get('all') === '1';
       if (wantsAll) {
-        const tokenError = staffTokenError(request.headers.authorization);
-        if (tokenError === 'Staff access is not configured.') return response.status(503).json({ error: tokenError });
-        if (tokenError) return response.status(401).json({ error: tokenError });
+        const admin = await checkAdmin(request);
+        if ('failure' in admin) return adminErrorResponse(response, admin.failure);
       }
       const rows = await listMenuRows(wantsAll);
       if (!wantsAll) {
@@ -131,9 +140,8 @@ export default async function handler(request: VercelRequest, response: VercelRe
       return response.json({ items: rows.map(toMenuItem) });
     }
 
-    const tokenError = staffTokenError(request.headers.authorization);
-    if (tokenError === 'Staff access is not configured.') return response.status(503).json({ error: tokenError });
-    if (tokenError) return response.status(401).json({ error: tokenError });
+    const admin = await checkAdmin(request);
+    if ('failure' in admin) return adminErrorResponse(response, admin.failure);
 
     if (request.method === 'POST') {
       const result = validateMenuFields((request.body ?? {}) as Record<string, unknown>, false);

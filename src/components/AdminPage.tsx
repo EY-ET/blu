@@ -2,6 +2,7 @@ import { FormEvent, useState } from 'react';
 import NavBar from './NavBar';
 import FeedbackAdminView from './FeedbackAdminView';
 import MenuAdminView from './MenuAdminView';
+import { AdminSession, login, logout } from '../lib/adminAuth';
 
 interface AdminPageProps {
   setPage: (page: string) => void;
@@ -10,18 +11,38 @@ interface AdminPageProps {
 type AdminTab = 'feedback' | 'menu';
 
 export default function AdminPage({ setPage }: AdminPageProps) {
-  const [staffToken, setStaffToken] = useState(() => sessionStorage.getItem('feedbackStaffToken') || '');
-  const [tokenInput, setTokenInput] = useState(() => sessionStorage.getItem('feedbackStaffToken') || '');
+  const [session, setSessionState] = useState<AdminSession | null>(() => {
+    const existing = sessionStorage.getItem('bluAdminSession');
+    return existing ? (JSON.parse(existing) as AdminSession) : null;
+  });
   const [tab, setTab] = useState<AdminTab>('feedback');
   const [error, setError] = useState('');
+  const [signingIn, setSigningIn] = useState(false);
 
-  const handleStaffAccess = (event: FormEvent<HTMLFormElement>) => {
+  const handleSessionExpired = () => setSessionState(null);
+
+  const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const token = tokenInput.trim();
-    if (!token) return;
-    sessionStorage.setItem('feedbackStaffToken', token);
+    const form = new FormData(event.currentTarget);
+    const email = String(form.get('email') || '').trim();
+    const password = String(form.get('password') || '');
+    if (!email || !password) return;
+    setSigningIn(true);
     setError('');
-    setStaffToken(token);
+    try {
+      const activeSession = await login(email, password);
+      setSessionState(activeSession);
+    } catch (loginError) {
+      setError(loginError instanceof Error ? loginError.message : 'Sign-in failed.');
+    } finally {
+      setSigningIn(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    setSessionState(null);
+    setTab('feedback');
   };
 
   return (
@@ -36,29 +57,53 @@ export default function AdminPage({ setPage }: AdminPageProps) {
       </div>
 
       <section className="flex-1 w-full max-w-3xl mx-auto px-4 py-8">
-        {!staffToken ? (
-          <form onSubmit={handleStaffAccess} className="bg-white border border-stone-200 rounded-2xl p-8 text-center shadow-sm">
-            <h2 className="font-forum text-2xl text-stone-900 mb-2">Staff access</h2>
-            <p className="text-stone-600 text-sm mb-6">Enter the staff token to manage feedback and the menu.</p>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <label htmlFor="staff-token" className="sr-only">Staff access token</label>
+        {!session ? (
+          <form onSubmit={handleLogin} className="bg-white border border-stone-200 rounded-2xl p-8 text-center shadow-sm">
+            <h2 className="font-forum text-2xl text-stone-900 mb-2">Admin sign-in</h2>
+            <p className="text-stone-600 text-sm mb-6">Sign in with your admin account.</p>
+            <div className="flex flex-col gap-3 max-w-sm mx-auto">
+              <label htmlFor="admin-email" className="sr-only">Email</label>
               <input
-                id="staff-token"
-                name="staffToken"
+                id="admin-email"
+                name="email"
+                type="email"
+                autoComplete="username"
+                required
+                placeholder="Email"
+                className="px-4 py-3 rounded-xl border border-stone-200 focus:border-stone-900 focus:ring-1 focus:ring-stone-900 outline-none"
+              />
+              <label htmlFor="admin-password" className="sr-only">Password</label>
+              <input
+                id="admin-password"
+                name="password"
                 type="password"
                 autoComplete="current-password"
                 required
-                value={tokenInput}
-                onChange={(event) => setTokenInput(event.target.value)}
-                placeholder="Staff access token"
-                className="min-w-0 flex-1 px-4 py-3 rounded-xl border border-stone-200 focus:border-stone-900 focus:ring-1 focus:ring-stone-900 outline-none"
+                placeholder="Password"
+                className="px-4 py-3 rounded-xl border border-stone-200 focus:border-stone-900 focus:ring-1 focus:ring-stone-900 outline-none"
               />
-              <button className="bg-stone-900 text-white px-6 py-3 rounded-xl font-bold tracking-widest uppercase text-sm">Unlock</button>
+              <button
+                type="submit"
+                disabled={signingIn}
+                className="bg-stone-900 text-white px-6 py-3 rounded-xl font-bold tracking-widest uppercase text-sm hover:bg-stone-800 transition-colors disabled:opacity-50"
+              >
+                {signingIn ? 'Signing in…' : 'Sign in'}
+              </button>
             </div>
             {error && <p role="alert" className="text-red-700 mt-4">{error}</p>}
           </form>
         ) : (
           <>
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
+              <p className="text-sm text-stone-500">Signed in as <strong className="text-stone-900">{session.email}</strong></p>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="px-4 py-2 rounded-xl border border-stone-300 text-stone-700 text-sm hover:border-stone-900 hover:text-stone-900 transition-colors"
+              >
+                Sign out
+              </button>
+            </div>
             <div className="flex justify-center gap-2 mb-8">
               {(['feedback', 'menu'] as AdminTab[]).map((name) => (
                 <button
@@ -76,9 +121,9 @@ export default function AdminPage({ setPage }: AdminPageProps) {
               ))}
             </div>
             {tab === 'feedback' ? (
-              <FeedbackAdminView setPage={setPage} staffToken={staffToken} />
+              <FeedbackAdminView setPage={setPage} onSessionExpired={handleSessionExpired} />
             ) : (
-              <MenuAdminView staffToken={staffToken} />
+              <MenuAdminView onSessionExpired={handleSessionExpired} />
             )}
           </>
         )}

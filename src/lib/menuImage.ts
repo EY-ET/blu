@@ -1,3 +1,5 @@
+import { authedFetch } from './adminAuth';
+
 const MAX_IMAGE_WIDTH = 1600;
 const JPEG_QUALITY = 0.82;
 
@@ -36,11 +38,11 @@ export async function resizeImageFile(file: File): Promise<string> {
   return downscaleToDataUrl(image);
 }
 
-export async function uploadMenuImage(file: File, staffToken: string): Promise<string> {
+export async function uploadMenuImage(file: File): Promise<string> {
   const dataUrl = await resizeImageFile(file);
-  const response = await fetch('/api/menu-upload', {
+  const response = await authedFetch('/api/menu-upload', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${staffToken}` },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ filename: file.name, dataUrl }),
   });
   const result = await response.json();
